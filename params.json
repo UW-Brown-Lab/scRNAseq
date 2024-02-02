@@ -1,0 +1,8 @@
+{
+	"input":"samplesheet.csv",
+	"genome_fasta":"GRCh38",
+	"gtf":"",
+	"protocol":"10XV2",
+	"aligner":"star",
+	"outdir":"./nf_output"
+}

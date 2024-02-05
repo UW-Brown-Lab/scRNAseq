@@ -1,12 +1,12 @@
 {
-	"sample_prefixes":["GSE148495_Thy_7.2_"],
+	"sample_prefixes":["GSM4618477_D20_CM_"],
 	"filter_options":{
 		"filter_with_DropletUtils":true,
 		"filter_out_mitochondrial":true
 	},
 	"filter_thresholds":{
 		"DropletUtils_call_threshold":0.05,
-		"percent_mitochondrial":0.05,
+		"percent_mitochondrial":5,
 		"nCount_RNA_upper":20000,
 		"nCount_RNA_lower":1000,
 		"nFeature_RNA_upper":5000,
@@ -17,6 +17,10 @@
 		"run_tSNE" : false,
 		"PCA_component_count":40
 		
+	},
+	"seurat_settings":{
+		"min_cells":3,
+		"min_features":0
 	}
 
 	

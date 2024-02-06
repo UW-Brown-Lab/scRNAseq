@@ -8,7 +8,7 @@ LoadPackages()
 params <- jsonlite::fromJSON("r-analysis-params.json")
 
 #Load post-alignment samples from json
-ImportCountData(params$sample_prefixes, 
+ImportCountData(params$study_design$samples, 
                 params$filter_options$filter_with_DropletUtils,
                 params$filter_thresholds$DropletUtils_call_threshold)
 
@@ -31,3 +31,8 @@ if(params$filter_options$filter_out_mitochondrial) {
 
 # Perform Dimensional Analysis
 seurat_objects <- AnalyzeDims(seurat_objects, params$dimensional_reduction_settings)
+
+seurat_objects <- IntegrateSeuratData(seurat_objects,params)
+
+CreateWebApp(seurat_objects, params$shinycell_settings)
+

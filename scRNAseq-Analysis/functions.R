@@ -402,10 +402,8 @@ IntegrateSeuratData <- function(seurat_list, parameters) {
   
   # Create empty list of integrated Seurats that need Dim analysis
   int_seurat_objects <- list()
-  
-  # Get a df of samples with no integration group
-  
-  # Iterate through samples that will not be integrated and add them to output
+
+  # Iterate through all samples and add them to output
   for(i in seq_along(seurat_list)) {
     
     # Re-add the each unintegrated seurat object

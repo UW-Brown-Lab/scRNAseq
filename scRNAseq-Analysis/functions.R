@@ -426,6 +426,7 @@ IntegrateSeuratData <- function(seurat_list, parameters) {
     # Create empty standalone list
     object_list <- c()
     
+    # Refactor later 
     # Create Standalone Seurat Objects
     for(object in subset_df$name) {
       assign(object, seurat_list[[object]])

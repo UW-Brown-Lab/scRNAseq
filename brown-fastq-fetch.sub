@@ -36,7 +36,7 @@ when_to_transfer_output = ON_EXIT
 # transfer_input_files = file1,/absolute/pathto/file2,etc
 transfer_input_files = sra_list.csv, amazon-corretto-17-x64-linux-jdk.tar.gz
 transfer_output_files = fastq_raw_reads.tar.gz, .nextflow.log
-transfer_output_remaps = "fastq_raw_reads.tar.gz = file:///staging/groups/surgery_brown_group/fetchngs_CMs.tar.gz"
+transfer_output_remaps = "fastq_raw_reads.tar.gz = file:///staging/groups/surgery_brown_group/fetchngs_$(Cluster).tar.gz"
 #
 # Tell HTCondor what amount of compute resources
 #  each job will need on the computer where it runs.

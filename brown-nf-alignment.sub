@@ -32,7 +32,7 @@ transfer_output_remaps = "nf_output.tar.gz = file:///staging/groups/surgery_brow
 #
 # Tell HTCondor what amount of compute resources
 #  each job will need on the computer where it runs.
-request_cpus = 4
+request_cpus = 2
 request_memory = 72GB
 request_disk = 512GB
 #

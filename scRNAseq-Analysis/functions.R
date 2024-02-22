@@ -21,8 +21,10 @@ LoadPackages <- function() {
   library(scales)
   library(rjson)
   library(R2HTML)
-  library(DT)
-  library(SeuratDisk)
+  #library(DT)
+  library(SingleCellExperiment)
+  library(scDblFinder)
+  #library(SeuratDisk)
   # to install SeuratDisk, which is not on CRAN, use the following:
   # if (!requireNamespace("remotes", quietly = TRUE)) {
   #   install.packages("remotes")
@@ -458,4 +460,88 @@ IntegrateSeuratData <- function(seurat_list, parameters) {
   # Return updated seurat list
   return(seurat_objects)
   
+}
+
+GenerateSCEobjects <- function(seurat_list) {
+  # Desc: Takes a list of seurat objects and returns a list of sce objects
+  # Args: seurat_list: A list of seurat objects
+  # Returns: a list of sce objects
+  
+  # Create empty list to return
+  sce_objects <- list()
+  
+  # For each seurat object
+  for(i in seq_along(seurat_list)) {
+    
+    # Get Seurat object
+    seurat_object <- seurat_list[[i]]
+    
+    # Get Sample name
+    sample_name <- names(seurat_list)[i]
+    
+    # Convert seurat to sce
+    sce_obj <- as.SingleCellExperiment(seurat_object)
+    
+    # Add sce object to output list
+    sce_objects[[sample_name]] <- sce_obj
+  }
+  
+  # Return sce list
+  return(sce_objects)
+}
+
+IdentifyDoublets <- function(sce_list) {
+  # Desc: Takes a list of sce objects and returns a list of annotated sce objects
+  # Args: sce_list: A list of sce objects
+  # Returns: a list of sce annotated objects
+  
+  # Create empty list to return
+  sce_objects <- list()
+  
+  # Iterate through each sce object
+  for(i in seq_along(sce_list)) {
+    
+    # Get sce object
+    sce_object <- sce_list[[i]]
+    
+    # Get Sample name
+    sample_name <- names(sce_list)[i]
+    
+    # Identify Doublets (uses random method)
+    sce_object <- scDblFinder(sce_object)
+    
+    # Add sce object to output list
+    sce_objects[[sample_name]] <- sce_object
+  }
+  
+  # Return sce list
+  return(sce_objects)
+}
+
+RemoveDoublets <- function(sce_list) {
+  # Desc: Takes a list of sce objects, indentifies doublets, and removes them.
+  # Args: sce_list: A list of sce objects
+  # Returns: a list of filtered sce objects
+  
+  # Create empty list to return
+  sce_list <- IdentifyDoublets(sce_list)
+  
+  # Iterate through each sce object
+  for(i in seq_along(sce_list)) {
+    
+    # Get sce object
+    sce_object <- sce_list[[i]]
+    
+    # Get Sample name
+    sample_name <- names(sce_list)[i]
+    
+    # Identify Doublets (uses random method)
+    sce_object <- sce_object[,sce_object$scDblFinder.class == "singlet"]
+    
+    # Add sce object to output list
+    sce_objects[[sample_name]] <- sce_object
+  }
+  
+  # Return sce list
+  return(sce_objects)
 }

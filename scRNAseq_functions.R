@@ -33,33 +33,38 @@ ImportCountData <- function(samples,dir_info) {
     # Get Sample File Path
     sample_path <- paste0(output_path, sample$file_path)
     
-    # Read raw counts
-    droplets.raw <- Read10X(paste0(sample_path,"raw_feature_bc_matrix.h5"))
     
     # Read filtered counts
     if(sample$antigen_capture & sample$antibody_capture) {
-      all.counts <- Read10X(paste0(sample_path,"sample_filtered_feature_bc.h5"))
+      all.counts <- Read10X_h5(paste0(sample_path,"sample_filtered_feature_bc_matrix.h5"))
+      all.raw.counts <- Read10X_h5(paste0(sample_path,"raw_feature_bc_matrix.h5"))
+      droplets.raw <- all.raw.counts[["Gene Expression"]]
       counts.filt <- all.counts[["Gene Expression"]]
       antibody.counts <- all.counts[["Antibody Capture"]]
       antigen.counts <- all.counts[["Antigen Capture"]]
     } else if(sample$antigen_capture) {
-      all.counts <- Read10X(paste0(sample_path,"sample_filtered_feature_bc.h5"))
+      all.counts <- Read10X_h5(paste0(sample_path,"sample_filtered_feature_bc_matrix.h5"))
+      all.raw.counts <- Read10X_h5(paste0(sample_path,"raw_feature_bc_matrix.h5"))
+      droplets.raw <- all.raw.counts[["Gene Expression"]]
       counts.filt <- all.counts[["Gene Expression"]]
       antibody.counts <- NULL
       antigen.counts <- all.counts[["Antigen Capture"]]
     } else if(sample$antibody_capture) {
-      all.counts <- Read10X(paste0(sample_path,"sample_filtered_feature_bc.h5"))
+      all.counts <- Read10X_h5(paste0(sample_path,"sample_filtered_feature_bc_matrix.h5"))
+      all.raw.counts <- Read10X_h5(paste0(sample_path,"raw_feature_bc_matrix.h5"))
+      droplets.raw <- all.raw.counts[["Gene Expression"]]
       counts.filt <- all.counts[["Gene Expression"]]
       antibody.counts <- all.counts[["Antibody Capture"]]
       antigen.counts <- NULL
     } else {
-      counts.filt <- Read10X(paste0(sample_path,"sample_filtered_feature_bc.h5"))
+      counts.filt <- Read10X_h5(paste0(sample_path,"sample_filtered_feature_bc_matrix.h5"))
+      droplets.raw <- Read10X_h5(paste0(sample_path,"raw_feature_bc_matrix.h5"))
       antibody.counts <- NULL
       antigen.counts <- NULL
     }
     
     # Handle multi output raw/filt discrepancy
-    if(sample$chemistry = "FRP") {
+    if(sample$chemistry == "FRP") {
       print("Data type is FRP ~~~~~ resolving matrix dimensions")
       exclude <- setdiff(rownames(droplets.raw),rownames(counts.filt))
       keep <- !rownames(droplets.raw) %in% exclude
@@ -110,8 +115,13 @@ DecontaminateSoup <- function(data_list, dim_reduct_config) {
     antigen.counts <- sample$antigen
     antibody.counts <- sample$antibody
     
+    print("Before processing, filtered mtx dims:")
+    print(dim(counts.filt))
+    
     if(is.null(counts.raw)) {
-      stop("Exiting execution -- Raw data does not exist")
+      print("Exiting execution -- Raw data does not exist")
+      corrected_matrix <- counts.filt
+      next
     }
     
     # Create seurat object from filtered counts for clustering
@@ -132,22 +142,29 @@ DecontaminateSoup <- function(data_list, dim_reduct_config) {
     meta.data <- filt_seurat@meta.data
     umap.data <- filt_seurat@reductions$umap@cell.embeddings
     
-    # Create SoupX SoupChannel object
-    SoupX_channel <- SoupChannel(counts.raw, counts.filt)
-    
-    # Apply seurat clusters
-    SoupX_channel <- setClusters(
-      SoupX_channel, 
-      setNames(meta.data$seurat_clusters,rownames(meta.data))
-    )
-    
-    # Apply dimensional reduction for visualizations
-    SoupX_channel <- setDR(SoupX_channel, umap.data)
-    
-    # Estimate Contamination and Remove it
-    SoupX_channel <- autoEstCont(SoupX_channel, verbose = T)
-    corrected_matrix <- adjustCounts(SoupX_channel, verbose = T)
-    
+    corrected_matrix <- tryCatch({
+      # Create SoupX SoupChannel object
+      SoupX_channel <- SoupChannel(counts.raw, counts.filt)
+      
+      # Apply seurat clusters
+      SoupX_channel <- setClusters(
+        SoupX_channel, 
+        setNames(meta.data$seurat_clusters,rownames(meta.data))
+      )
+      
+      # Apply dimensional reduction for visualizations
+      SoupX_channel <- setDR(SoupX_channel, umap.data)
+      
+      # Estimate Contamination and Remove it
+      SoupX_channel <- autoEstCont(SoupX_channel, verbose = T)
+      corrected_matrix <- adjustCounts(SoupX_channel, verbose = T)
+      },
+      error = function(e){
+        print("Error in soup decontamination:")
+        print(e)
+        print("Proceeding without soup decontamination...")
+        corrected_matrix <- counts.filt
+      })
     # Add corrected count matrix to output
     output_list[[sample_name]] <- list(
       counts = corrected_matrix,
@@ -155,6 +172,8 @@ DecontaminateSoup <- function(data_list, dim_reduct_config) {
       antibody = antibody.counts
       
     )
+    print("corrected matrix:")
+    print(dim(corrected_matrix))
   }
   
   return(output_list)
@@ -177,55 +196,70 @@ CountMitochondrialFeatures <- function(merged_seurat) {
   return(merged_seurat)
 }
 
-FilterSeuratObject <- function(merged_seurat, thresholds) {
+FilterSeuratObject <- function(seurat_list, config) {
   # Desc: Subsets seurat object by specified parameters
-  # Args: merged_seurat: A merged suerat object.
+  # Args: seurat_list: A suerat object list.
   #       thresholds: the params$filter_options$thresholds
-  # Returns: A subsetted seurat object and before/after vln plots
+  # Returns: A list of subsetted seurat object and before/after vln plots
   
-  # Count Mitochondrial Features
-  mt_seurat <- CountMitochondrialFeatures(merged_seurat)
+  # Initialize empty list to return
+  output_list <- list()
   
-  # Get number of cells before filtering
-  total_cells <- ncol(mt_seurat)
+  # Get thresholds
+  thresholds <- config$filter_options$thresholds
   
-  # Get number of features before filtering
-  total_features <- nrow(mt_seurat)
-  
-  # Filter out cells
-  filt_seurat <- subset(mt_seurat, 
-                        subset = nCount_RNA < thresholds$nCount_RNA_upper & 
-                          nCount_RNA > thresholds$nCount_RNA_lower &
-                          nFeature_RNA > thresholds$nFeature_RNA_lower &
-                          nFeature_RNA < thresholds$nFeature_RNA_upper & 
-                          percent.mt < thresholds$percent_mitochondrial
-  )
-  
-  # Get number of cells after filtering
-  remaining_cells <- ncol(filt_seurat)
-  
-  # Get number of features after filtering
-  remaining_features <- nrow(filt_seurat)
-  
-  print(paste0(remaining_cells, " cells remaining from ", total_cells))
-  print(paste0(remaining_features, " features remaining from ", total_features))
-  
-  
-  before_plot <- VlnPlot(mt_seurat, 
-                         features = c("nFeature_RNA",
-                                      "nCount_RNA",
-                                      "percent.mt"),
-                         ncol = 3
-  )
-  after_plot <- VlnPlot(filt_seurat, 
-                        features = c("nFeature_RNA",
-                                     "nCount_RNA",
-                                     "percent.mt"),
-                        ncol = 3
-  )
-  
-  output_list <- list(plot_b = before_plot, plot_a = after_plot, seurat = filt_seurat)
-  
+  for (i in seq_along(seurat_list)){
+    
+    # Get seurat
+    seu <- seurat_list[[i]]
+    print(seu)
+    
+    # Get Sample name
+    sample_name <- names(seurat_list)[i]
+    
+    # Count Mitochondrial Features
+    mt_seurat <- CountMitochondrialFeatures(seu)
+    
+    # Get number of cells before filtering
+    total_cells <- ncol(mt_seurat)
+    
+    # Get number of features before filtering
+    total_features <- nrow(mt_seurat)
+    
+    # Filter out cells
+    filt_seurat <- subset(mt_seurat, 
+                          subset = nCount_RNA < thresholds$nCount_RNA_upper & 
+                            nCount_RNA > thresholds$nCount_RNA_lower &
+                            nFeature_RNA > thresholds$nFeature_RNA_lower &
+                            nFeature_RNA < thresholds$nFeature_RNA_upper & 
+                            percent.mt < thresholds$percent_mitochondrial
+    )
+    
+    # Get number of cells after filtering
+    remaining_cells <- ncol(filt_seurat)
+    
+    # Get number of features after filtering
+    remaining_features <- nrow(filt_seurat)
+    
+    print(paste0(remaining_cells, " cells remaining from ", total_cells))
+    print(paste0(remaining_features, " features remaining from ", total_features))
+    
+    
+    before_plot <- VlnPlot(mt_seurat, 
+                           features = c("nFeature_RNA",
+                                        "nCount_RNA",
+                                        "percent.mt"),
+                           ncol = 3
+    ) + plot_annotation(paste0(sample_name), " - Before")
+    after_plot <- VlnPlot(filt_seurat, 
+                          features = c("nFeature_RNA",
+                                       "nCount_RNA",
+                                       "percent.mt"),
+                          ncol = 3
+    ) + plot_annotation(paste0(sample_name), " - After")
+    
+    output_list[[sample_name]] <- list(plot_b = before_plot, plot_a = after_plot, seurat = filt_seurat)
+  }
   # Return annotated seurat list
   return(output_list)
 }
@@ -249,14 +283,14 @@ GenerateSCEobjects <- function(cleaned_mtx_list, config) {
     mtx_name <- names(cleaned_mtx_list)[i]
     
     # Get sample config info from parameters
-    sample <- config$samples[[mtx_name]]
+    sample <- config$samples[i,]
     
     # Create base suerat
-    seu <- CreateSeuratObject(cleaned_mtx_list[[mtx_name]], project = mtx_name)
+    seu <- CreateSeuratObject(cleaned_mtx_list[[mtx_name]]$counts, project = mtx_name)
     
     if(sample$antigen_capture) {
       # Add antigen data if present
-      seu[["Antigen Capture"]] <- CreateAssay5Object(counts=cleaned_mtx_list[[mtx_name]]$antigen)
+      seu[["Antigen"]] <- CreateAssay5Object(counts=cleaned_mtx_list[[mtx_name]]$antigen)
     }
     
     if(sample$antibody_capture) {
@@ -372,7 +406,7 @@ RemoveDoublets <- function(sce_list) {
 CreateMergedSeurat <- function(sce_list, config) {
   # Desc: Takes a list of sce objects and creates a merged seurat object from it.
   # Args: sce_list: A list of sce objects
-  # Returns: one merged seurat object
+  # Returns: list with a list of seurats and list of plots
   
   # Create temp list of seurat objects
   seurat_list <- list()
@@ -387,13 +421,16 @@ CreateMergedSeurat <- function(sce_list, config) {
     sample_name <- names(sce_list)[i]
     
     # Convert to seurat
+    print(paste0("making seu for ",sample_name))
     this_seurat <- as.Seurat(sce_object, data = NULL)
+    print("Done")
     
     # Add to list of seurat objects
     seurat_list[[sample_name]] <- this_seurat
   }
   
   if(config$merge_samples){
+    print("inside if")
     # Merge all seurat objects into one (each object will have 2 layers)
     merged_seurat <- seurat_list[[1]]  # Start with the first Seurat object
     if(length(seurat_list) > 1) {
@@ -408,9 +445,11 @@ CreateMergedSeurat <- function(sce_list, config) {
       ggtitle("After Doublet Removal")
     
     DefaultAssay(merged_seurat) <- "RNA"
-    
-    return(list(seurat=merged_seurat,after_plot=plot))
+    merged_out <- list()
+    merged_out[["merged"]] <- merged_seurat
+    return(list(seurat=merged_out,after_plot=plot))
   }
+  plot <- list()
   for(i in seq_along(seurat_list)) {
     
     # Get Seurat object
@@ -419,9 +458,11 @@ CreateMergedSeurat <- function(sce_list, config) {
     # Get Sample name
     sample_name <- names(seurat_list)[i]
     
-      plot[[i]] <- FeatureScatter(seu, feature1="nCount_RNA", feature2="nFeature_RNA") + 
+      
+    plot[[i]] <- FeatureScatter(seurat_object, feature1="nCount_RNA", feature2="nFeature_RNA") + 
         ggtitle("After Doublet Removal") + plot_annotation(sample_name)
     
+    print(seurat_object)
     DefaultAssay(seurat_object) <- "RNA"
     
     seurat_list[[i]] <- seurat_object
@@ -430,29 +471,42 @@ CreateMergedSeurat <- function(sce_list, config) {
   return(list(seurat=seurat_list,after_plot=plot))
 }
 
-ClusterAnalysis <- function(merged_seurat,parameters) {
+ClusterAnalysis <- function(subsetted_list,parameters) {
   # Desc: Perform clustering and generate feature plots
-  # Args: merged_seurat: Merged seurat object or list of seurat objects
+  # Args: seurat_list: List of seurat objects
   #       parameters: Clustering parameters
   # Returns: A list containing modified seurat, and outputted plots
   
+  # Make seurat list
+  seurat_list <- list()
+  
+  # Get seurats from list
+  for (i in seq_along(subsetted_list)) {
+    # Get name
+    sample_name <- names(subsetted_list)[i]
+    
+    # Get sample
+    seu <- subsetted_list[[sample_name]]$seurat
+    
+    seurat_list[[sample_name]] <- seu
+  }
 
   # make empty plot list
   output_plots <- list()
   
-  if(is.list(merged_seurat)) {
+  if(is.list(seurat_list)) {
     
     output_seu_list <- list()
-    for( i in seq_along(merged_seurat)){
+    for( i in seq_along(seurat_list)){
       
       # Get Seurat object
-      seu <- merged_seurat[[i]]
+      seu <- seurat_list[[i]]
       
       # Get Sample name
-      sample_name <- names(merged_seurat)[i]
+      sample_name <- names(seurat_list)[i]
       
-      if(parameters$regress_mitochondrial){
-        seu <- SCTransform(seu, verbose=FALSE, vars.to.regress="percent.mt", return.only.var.ganes = F) %>% 
+      if(parameters$filter_options$regress_mitochondrial){
+        seu <- SCTransform(seu, verbose=FALSE, vars.to.regress="percent.mt", return.only.var.genes = F) %>% 
           RunPCA() %>% 
           FindNeighbors(dims = 1:30) %>%
           RunUMAP(dims = 1:30) %>%
@@ -477,33 +531,6 @@ ClusterAnalysis <- function(merged_seurat,parameters) {
     )
     return(output_list)
   }
-  
-  
-  # Regularize with SCTransform
-  seu <- SCTransform(merged_seurat, verbose=FALSE, vars.to.regress="percent.mt", return.only.var.ganes = F) %>% 
-    RunPCA() %>% 
-    FindNeighbors(dims = 1:30) %>%
-    RunUMAP(dims = 1:30) %>%
-    FindClusters()
-  
-  # Plot UMAP
-  output_plots[["UMAP"]] <- DimPlot(seu, reduction = "umap", group.by = "seurat_clusters") + ggtitle("UMAP Plot")
-  
-  
-  # Generate Feature Plots
-  feat_plots <- MakeFeaturePlots(seu, parameters)
-  
-  # Combine outputted plots
-  output_plots <- c(output_plots, feat_plots)
-  
-  # Combine output list
-  output_list <- list(
-    seu = seu,
-    plots = output_plots
-  )
-  
-  # Return combined output list
-  return(output_list)
 }
 
 MakeFeaturePlots <- function(merged_seurat,parameters) {

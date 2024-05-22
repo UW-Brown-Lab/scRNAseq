@@ -584,8 +584,19 @@ DemuxSample <- function(seu, hto.mtx) {
   return(seu)
 }
 
-GenerateLoupeFile <- function(seu, filename) {
-  # Creates a 10x Loupe Browser file from a Seurat object
-  library(loupeR)
-  create_loupe_from_seurat(seu, output_name = filename)
+GenerateLoupeFile <- function(seu_list) {
+  # Creates a 10x Loupe Browser file from a Seurat object list
+  for (i in seq_along(seu_list)) {
+    # Get name
+    sample_name <- names(subsetted_list)[i]
+    
+    # Get sample
+    seu <- subsetted_list[[sample_name]]
+    
+    # File Name
+    filename <- paste0(sample_name, " loupe")
+    
+    # Make Loupe File
+    create_loupe_from_seurat(seu, output_name = filename)
+  }
 }

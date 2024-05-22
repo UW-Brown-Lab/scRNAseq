@@ -588,10 +588,10 @@ GenerateLoupeFile <- function(seu_list) {
   # Creates a 10x Loupe Browser file from a Seurat object list
   for (i in seq_along(seu_list)) {
     # Get name
-    sample_name <- names(subsetted_list)[i]
+    sample_name <- names(seu_list)[i]
     
     # Get sample
-    seu <- subsetted_list[[sample_name]]
+    seu <- seu_list[[sample_name]]
     
     # File Name
     filename <- paste0(sample_name, " loupe")

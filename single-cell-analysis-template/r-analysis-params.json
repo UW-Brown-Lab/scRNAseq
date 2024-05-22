@@ -1,0 +1,44 @@
+{
+		"analysis_title":"Template",
+		"directory_info":{
+		  "alignment_output_dir":"sample_data"
+		},
+		"merge_samples":false,
+		"samples":[
+			{
+				"name":"FLEX Sample",
+				"file_path":"Flex_dir/",
+				"chemistry":"FRP",
+				"antibody_capture":false,
+				"antigen_capture":false
+			}
+		],
+	"filter_options":{
+		"filter_out_mitochondrial":true,
+		"regress_mitochondrial":true,
+		"thresholds":{
+		  "percent_mitochondrial":25,
+		  "nCount_RNA_upper":30000,
+		  "nCount_RNA_lower":1000,
+		  "nFeature_RNA_upper":50000,
+		  "nFeature_RNA_lower":250
+	  }
+	},
+	"dimensional_reduction_settings":{
+		"run_UMAP": true,
+		"run_tSNE" : false,
+		"PCA_component_count":40
+		
+	},
+	"init_seurat_settings":{
+		"min_cells":3,
+		"min_features":0
+	},
+	"featureplot_settings":{
+	  "feature_groups":{
+	    "AECs":["CXCR4","DLL4","EFNB2","GJA4","HEY1","JAG1","NOTCH1","NOTCH4","NRP1"]
+	  }
+	}
+
+	
+}

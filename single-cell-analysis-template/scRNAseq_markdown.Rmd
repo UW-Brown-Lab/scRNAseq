@@ -1,0 +1,142 @@
+---
+title: "Standard Single Cell RNA Seq Analysis"
+author: "Wesley Blashka"
+date: "`r Sys.Date()`"
+output: 
+  tufte::tufte_html
+knit: |
+  (function(input,...){
+    rmarkdown::render(
+      input,
+      output_file = paste0(
+      xfun::sans_ext(input),'-',Sys.Date(),'.'
+      ),
+      envir = globalenv()
+    )
+  })
+---
+<script src="code-folding.js"></script>
+
+# Setup
+
+Functions pulled from `https://raw.githubusercontent.com/UW-Brown-Lab/scRNAseq/main/scRNAseq_functions.R`
+```{r Setup Env, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error=TRUE, collapse=TRUE, results = 'hold')
+
+# Desc: Loads all necessary packages cached in compiled CTHC transferred  file
+
+library(jsonlite)
+library(tidyverse)
+library(DropletUtils)
+library(Seurat)
+library(ShinyCell)
+library(Matrix)
+library(scales)
+library(rjson)
+library(R2HTML)
+library(SingleCellExperiment)
+library(scDblFinder)
+library(SoupX)
+library(patchwork)
+library(glmGamPoi)
+library(scRepertoire)
+library(tufte)
+
+# Load modular functions
+source('https://raw.githubusercontent.com/UW-Brown-Lab/scRNAseq/main/scRNAseq_functions.R')
+```
+
+## Load Paramaters from JSON
+Load in the parameters for all downstream processing from `r-analysis-params.json`. These will dictate the settings for all of the following functions.
+```{r Load Parameters, class.source= 'fold-hide'}
+# Parse the JSON file and load the params
+config <- jsonlite::fromJSON("r-analysis-params.json")
+file.copy("r-analysis-params.json", paste0(config$analysis_title, " - parameters.json"))
+```
+
+# Import Count Data
+
+Load 10X formatted data for each sample specified in the parameters using the `file_path`. Samples must be in the h5 file format. Store these in a list of items named by sample names, each containing the raw and filtered counts.
+
+```{r Import Count Data, class.source= 'fold-hide'}
+loaded_counts <- ImportCountData(config$samples, config$directory_info)
+```
+
+# Estimate cell free mRNA Contamination
+
+Use SoupX to estimate cell free mRNA Contamination. Create a SoupChannel object using the imported data, perform clustering of the filtered data before SoupX filtering to identify clusters to pass to SoupX, estimate contamination, and de-contaminate each sample.
+
+```{r Estimate Contamination with SoupX, warning=FALSE, class.source= 'fold-hide'}
+cleaned_counts <- DecontaminateSoup(loaded_counts, config$dimensional_reduction_settings)
+
+# Remove and GC to conserve memory
+rm(loaded_counts)
+gc()
+```
+
+# Identify and remove Doublets
+
+Use scDblFinder to identify potential doublets. This compares artificially concatenated doublets with potential doublets. Remove identified doublets from the experiment
+
+```{r Remove Doublets, class.source= 'fold-hide'}
+set.seed(1337)
+sce_and_before_plot <- GenerateSCEobjects(cleaned_counts, config)
+filtered_sce_list <- RemoveDoublets(sce_and_before_plot$sce_list)
+merge_and_after_plot <- CreateMergedSeurat(filtered_sce_list, config)
+
+# Show QC plots
+sce_and_before_plot$before_plot
+merge_and_after_plot$after_plot
+
+# Remove and GC to conserve memory
+rm(sce_and_before_plot)
+rm(cleaned_counts)
+rm(filtered_sce_list)
+gc()
+```
+
+# Subsequent Filtering  (%MT, nCount_RNA, nFeature_RNA)
+
+Determine the percent of the features that come from mitochondrial RNA. Then subset the merged Seurat object to only include cells within acceptable limits as defined in the configuration file.
+
+```{r Filtering of Seurat, class.source= 'fold-hide'}
+subsetted_seurat_and_plots <- FilterSeuratObject(merge_and_after_plot$seurat, config)
+
+# Show QC plots
+for (i in seq_along(subsetted_seurat_and_plots)){
+  sample <- subsetted_seurat_and_plots[[i]]
+  print(sample[["plot_b"]])
+  print(sample[["plot_a"]])
+}
+
+# Remove and GC to conserve memory
+rm(merge_and_after_plot)
+gc()
+```
+# Clustering and Feature Identification
+
+Perform Clustering and Dimensional Reduction. Normalize/scale with SCTransform. Generate feature plots from config.
+
+```{r Cluster Analysis, warning=FALSE, class.source= 'fold-hide'}
+# Cluster Analysis
+clustered_seurat_and_plots <- ClusterAnalysis(subsetted_seurat_and_plots,config)
+print(clustered_seurat_and_plots$plots)
+saveRDS(clustered_seurat_and_plots$seu,paste0(config$analysis_title, "_seu.RDS"))
+gc()
+```
+
+
+
+### Parameters
+```{r Print Parameters, class.source= 'fold-hide'}
+print(config)
+```
+
+
+
+### Session Info
+```{r Print Session Info, class.source= 'fold-hide'}
+print(sessionInfo())
+
+```
+

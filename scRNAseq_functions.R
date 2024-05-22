@@ -521,7 +521,7 @@ ClusterAnalysis <- function(subsetted_list,parameters) {
       
       # Perform Cell Cycle Scoring
       seu <- CellCycleScoring(seu, s.features = cc.genes.updated.2019$s.genes, g2m.features = cc.genes.updated.2019$g2m.genes, set.ident = F)
-      
+      seu[["cell.cycle.phase"]] <- "Phase"
       
       output_plots[[paste0("UMAP-",sample_name)]] <- DimPlot(seu, reduction = "umap", group.by = "seurat_clusters") + ggtitle("UMAP Plot") + plot_annotation(sample_name)
       feat_plots <- MakeFeaturePlots(seu, parameters)

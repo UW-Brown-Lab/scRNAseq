@@ -59,6 +59,11 @@ ImportCountData <- function(samples,dir_info) {
     } else {
       counts.filt <- Read10X_h5(paste0(sample_path,"sample_filtered_feature_bc_matrix.h5"))
       droplets.raw <- Read10X_h5(paste0(sample_path,"raw_feature_bc_matrix.h5"))
+          if (file.exists(paste0(sample_path,"raw_feature_bc_matrix.h5"))) {
+              droplets.raw <- Read10X_h5(paste0(sample_path,"raw_feature_bc_matrix.h5"))
+          } else {
+              droplets.raw <- NULL
+          }
       antibody.counts <- NULL
       antigen.counts <- NULL
     }
